@@ -1,0 +1,1798 @@
+openapi: 3.1.0
+
+info:
+  title: Event Management API
+  description: Event Management allows users to create, read, update and delete Events and Event Types
+  version: '3.17.0'
+  x-visibility: external
+
+servers:
+  - url: https://api.eu1.siemens.app/eventmanagement-1000001700/v3
+    description: Xcelerator compliant URL
+  - url: https://gateway.eu1.mindsphere.io/api/eventmanagement/v3
+    description: IH compliant URL
+
+tags:
+  - name: event management billboard
+    description: Event management billboard operations
+  - name: events
+    description: Event operations
+  - name: event types
+    description: Event type operations
+  - name: jobs
+    description: Job operations
+
+paths:
+  /:
+    get:
+      operationId: infoAPI
+      summary: Info about the API
+      description: Ideally, the billboard URI is the only address a REST client needs to know. From there onwards, it must be able to discover all other URIs of the service by using the returned
+      tags:
+        - event management billboard
+      security:
+        - event:
+            - em.r
+      responses:
+        '200':
+          description: ok
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/InfoResponse'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+
+  /events:
+    post:
+      operationId: createEvent
+      summary: Create new event
+      description: |
+        Creates an event with the provided content (`Event` model can be used).
+
+        \
+        If no `typeId` is given in the request, then a `MindsphereStandardEvent` will be created. A standard event has 5 additional fields beside the fields defined in the `Event` data model
+          - `description` (string, not required, not filterable, updatable)
+          - `severity` (integer, not required, filterable, updatable)
+          - `code` (string, not required, filterable, updatable)
+          - `source` (string, not required, filterable, updatable)
+          - `acknowledged` (boolean, not required, filterable, updatable)
+
+        If there is a valid `typeId` in the request body then the event DTO must match to the corresponding event type given by the `typeId`. All the required fields from given 'typeId' and its parent eventTypes in the hierarchy should be included in the event payload when creating a custom event
+
+        \
+        **!Restriction!**
+        - **After successful response, it may take 100ms to make it visible to the user.**
+      tags:
+        - events
+      security:
+        - event:
+            - em.c
+          eventType:
+            - em.et.r
+      parameters:
+        - $ref: '#/components/parameters/includeShared'
+      requestBody:
+        description: Event content to be created or updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomEvent'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the resource
+            ETag:
+              schema:
+                type: string
+              description: Incremental counter for optimistic concurrency control
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/CustomEventCreated'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseCreateEvent'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseCreateEvent'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+    get:
+      operationId: queryEvents
+      summary: Query events
+      description: |
+        Returns events based on the request parameters. If no `typeId` is given in the filter expression then `MindsphereStandardEvent` typed events (and its descendants excluding descendant specific fields) will be returned.
+
+        \
+        **Note:**
+        **Clients must always expect incompleteness of the list of returned events, as internal processing is limited by eventual consistency.**
+      security:
+        - event:
+            - em.r
+      tags:
+        - events
+      parameters:
+        - $ref: '#/components/parameters/size'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/eventFilter'
+        - $ref: '#/components/parameters/eventSort'
+        - $ref: '#/components/parameters/ifNoneMatch'
+        - $ref: '#/components/parameters/eventHistory'
+        - $ref: '#/components/parameters/includeShared'
+        - $ref: '#/components/parameters/enablePageCache'
+      responses:
+        '200':
+          description: A page of events.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: The hash of the response's content
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/QueryEventsResponse'
+        '304':
+          $ref: '#/components/responses/304StandardResponse'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseGetEvent'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /events/{eventId}:
+    get:
+      operationId: retrieveEvent
+      summary: Get an event
+      description: |
+        Returns an event by ID.
+      tags:
+        - events
+      security:
+        - event:
+            - em.r
+      parameters:
+        - $ref: '#/components/parameters/eventId'
+        - $ref: '#/components/parameters/ifNoneMatch'
+        - $ref: '#/components/parameters/includeShared'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: The hash of the response's content
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/CustomEventResponse'
+        '304':
+          $ref: '#/components/responses/304StandardResponse'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseGetEventById'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+    put:
+      operationId: updateEvent
+      summary: Update an event
+      description: |
+        Update an existing event by ID.
+
+        \
+        If user wants to have history of an event, it can be done to use POST request having the same `typeId`, `correlationId` and `entityId` in the payload.
+
+        \
+        **!Restriction!**
+        - **PUT endpoint can only be used for content adjustments (corrections) but not for status changes (e.g. tickets use case). The time range for changes (updating an event by ID) might be limited in upcoming versions.**
+        - **Recommended usage for status changes is the update simulation based on an existing event's correlation ID and entity ID via POST endpoint.**
+        - **After successful response, it may take 100ms to make it visible to the user.**
+        - **The following fields are required and their value cannot be changed**
+          - **`correlationId`**
+          - **`timestamp`**
+          - **`entityId`**
+        - **`typeId` cannot be changed, and is required for Custom events**
+      tags:
+        - events
+      security:
+        - event:
+            - em.u
+          eventType:
+            - em.et.r
+      parameters:
+        - $ref: '#/components/parameters/eventId'
+        - $ref: '#/components/parameters/ifMatch'
+        - $ref: '#/components/parameters/includeShared'
+      requestBody:
+        description: Event content to be created or updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomEvent'
+      responses:
+        '200':
+          description: Updated
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Incremental counter for optimistic concurrency control
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/CustomEventUpdated'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseUpdateEvent'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseUpdateEvent'
+        '409':
+          $ref: '#/components/responses/409StandardErrorResponse'
+        '412':
+          $ref: '#/components/responses/412StandardErrorResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /eventTypes:
+    post:
+      operationId: createEventType
+      summary: Create new event type
+      description: |
+        Creates an event type with the provided content.
+        - Default `id` is generated UUID. If `id` is provided then it has to be prefixed with the current tenant and has to be followed by a dot.
+        - Default `parentId` is `BaseEvent`
+        - Default `ttl` value is 35
+        - Default `scope` is LOCAL
+        - Default `filterable` value for a field is false
+        - Default `required` value for a field is false
+        - Default `updatable` value for a field is true
+        - Clients must provide `values` field in case of ENUM type and must not provide in case of any other field type.
+
+        \
+        **!Restriction!**
+        - **After successful response, it may take 100ms to make it visible to the user.**
+      tags:
+        - event types
+      security:
+        - eventType:
+            - em.et.c
+      parameters:
+        - $ref: '#/components/parameters/includeShared'
+      requestBody:
+        description: Event type content to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventType'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the resource
+            ETag:
+              schema:
+                type: string
+              description: Incremental counter for optimistic concurrency control
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/EventTypeResponse'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseCreateEventType'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/409ErrorResponseCreateEventType'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+    get:
+      operationId: queryEventTypes
+      summary: Query event types
+      description: |
+        Returns event types based on the request parameters.
+
+        \
+        **!Note!**
+        - **In case of sub-tenant user, global and related T1 local event types are also visible.**
+      tags:
+        - event types
+      security:
+        - eventType:
+            - em.et.r
+      parameters:
+        - $ref: '#/components/parameters/sizeET'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/eventTypeFilter'
+        - $ref: '#/components/parameters/eventTypeSort'
+        - $ref: '#/components/parameters/ifNoneMatch'
+        - $ref: '#/components/parameters/includeShared'
+        - $ref: '#/components/parameters/excludeGlobal'
+      responses:
+        '200':
+          description: A page of event types.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: The hash of the response's content
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/QueryEventTypesResponse'
+        '304':
+          $ref: '#/components/responses/304StandardResponse'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseGetEventType'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /eventTypes/{eventTypeId}:
+    patch:
+      operationId: updateEventType
+      summary: Update an event type
+      description: |
+        Updates an event type by ID by only sending the changed content.
+
+        \
+        **!Restriction!**
+        - **After successful response, it may take 100ms to make it visible to the user.**
+      tags:
+        - event types
+      security:
+        - eventType:
+            - em.et.u
+      parameters:
+        - $ref: '#/components/parameters/eventTypeId'
+        - $ref: '#/components/parameters/ifMatch'
+        - $ref: '#/components/parameters/includeShared'
+      requestBody:
+        description: |
+          New value for the given attribute or the field, that should be applied, depending on the *op* value. Structure is varying
+            - If patch operation would modify attribute properties (*ttl*, *scope*, *required*) then *value* property of the patch content must be the type of the specified attribute (eg. *SCOPE*, *45*, *false*)
+            - If patch operation would add new field then *value* property of the patch content must be an object describing field properties
+            - If patch operation would add a new constant to an existing Enum field then *value* property must be a string of single new constant to add. Delete and update operation on existing constants of an Enum field is not supported.
+
+                  Example 1:
+                  {
+                    "op": "replace",
+                    "path": "/scope",
+                    "value": "GLOBAL"
+                  }
+
+                  Example 2:
+                  {
+                    "op": "add",
+                    "path": "/fields",
+                    "value": {
+                      "name": "newFieldName",
+                      "updatable": false,
+                      "type": "INTEGER"
+                    }
+                  }
+
+                  Example 3:
+                  {
+                    "op": "replace",
+                    "path": "/fields/originalField/required",
+                    "value": false
+                  }
+
+                  Example 4:
+                  {
+                    "op": "add",
+                    "path": "/fields/originalEnumField/values",
+                    "value": "newConstantValue"
+                  }
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventTypePatch'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Incremental counter for optimistic concurrency control
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/EventTypeResponse'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseUpdateEventType'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseUpdateEventType'
+        '409':
+          $ref: '#/components/responses/409ErrorResponseUpdateEventType'
+        '412':
+          $ref: '#/components/responses/412StandardErrorResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+    get:
+      operationId: retrieveEventType
+      summary: Get an event type
+      description: |
+        Returns an event type by ID.
+
+        \
+        **!Note!**
+        - **In case of sub-tenant user, global and related T1 local event types are also visible.**
+      tags:
+        - event types
+      security:
+        - eventType:
+            - em.et.r
+      parameters:
+        - $ref: '#/components/parameters/eventTypeId'
+        - $ref: '#/components/parameters/ifNoneMatch'
+        - $ref: '#/components/parameters/includeShared'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: The hash of the response's content
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/EventTypeResponse'
+        '304':
+          $ref: '#/components/responses/304StandardResponse'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseGetEventTypeById'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+    delete:
+      operationId: deleteEventType
+      summary: Delete an event type
+      description: |
+        Delets an event type by ID.
+      tags:
+        - event types
+      security:
+        - eventType:
+            - em.et.d
+      parameters:
+        - $ref: '#/components/parameters/eventTypeId'
+        - $ref: '#/components/parameters/ifMatch'
+        - $ref: '#/components/parameters/includeShared'
+      responses:
+        '204':
+          description: NO CONTENT
+        '400':
+          $ref: '#/components/responses/400ErrorResponseDeleteEventType'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseDeleteEventTypeById'
+        '409':
+          $ref: '#/components/responses/409ErrorResponseDeleteEventType'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /deleteEventsJobs:
+    post:
+      operationId: createEventDeletionJob
+      summary: Create a delete events job
+      description: |
+        Creates an asynchronous job which deletes events based on filter expression. Maximum 1.000.000 events can be deleted at once. The job status can be queried for 2 hours at most after the jobID is returned.
+        If the latest event instance in a history of an event is deleted then the history of the event will be deleted.
+
+        \
+        **!Restriction!**
+        Job will result in `FINISHED_WITH_ERROR` state in cases you can find below
+        - **Concurrent event deletion on the same event type is not allowed.**
+        - **Concurrent event deletion and event type modification for the same event type is not allowed.**
+      security:
+        - event:
+            - em.d
+          job:
+            - em.dej.c
+          eventType:
+            - em.et.r
+      tags:
+        - jobs
+      requestBody:
+        description: Operation content to perform asynchronous delete events job
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/deleteEventsJob'
+      responses:
+        '202':
+          description: ACCEPTED
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/JobResource'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseBulkDeleteEvent'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /deleteEventsJobs/{jobId}:
+    get:
+      operationId: retrieveEventDeletionJob
+      summary: Get a delete events job
+      description: |
+        Returns a delete events job state by ID.
+      tags:
+        - jobs
+      security:
+        - job:
+            - em.dej.r
+      parameters:
+        - $ref: '#/components/parameters/jobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/DeleteJobResource'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseGetJobById'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /createEventsJobs:
+    post:
+      operationId: createEventCreationJob
+      summary: Create a create events job
+      description: |
+        Creates an asynchronous job which creates events with the provided content. Maximum 150 events can be created at once. The job status can be queried for 2 hours at most after the jobID is returned.
+      security:
+        - event:
+            - em.c
+          job:
+            - em.cej.c
+          eventType:
+            - em.et.r
+      tags:
+        - jobs
+      requestBody:
+        description: Operation content to perform asynchronous create events job
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/createEventsJob'
+      responses:
+        '202':
+          description: ACCEPTED
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/JobResource'
+        '400':
+          $ref: '#/components/responses/400ErrorResponseBulkCreateEvent'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+  /createEventsJobs/{jobId}:
+    get:
+      operationId: retrieveEventCreationJob
+      summary: Get a create events job
+      description: |
+        Returns a create events job state by ID.
+      tags:
+        - jobs
+      security:
+        - job:
+            - em.cej.r
+      parameters:
+        - $ref: '#/components/parameters/jobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/CreateJobResource'
+        '401':
+          $ref: '#/components/responses/401StandardErrorResponse'
+        '403':
+          $ref: '#/components/responses/403ErrorForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/404ErrorResponseGetJobById'
+        '429':
+          $ref: '#/components/responses/429StandardErrorResponse'
+        '500':
+          $ref: '#/components/responses/500StandardErrorResponse'
+
+components:
+  schemas:
+    InfoResponse:
+      type: object
+      properties:
+        self:
+          type: object
+          properties:
+            href:
+              type: string
+              format: uri
+              example: 'https://advanced-eventmanagement.mindsphere.io/api/v3'
+        events:
+          type: object
+          properties:
+            href:
+              type: string
+              format: uri
+              example: 'https://advanced-eventmanagement.mindsphere.io/api/v3/events{?filter}'
+            templated:
+              type: boolean
+              example: true
+        eventTypes:
+          properties:
+            href:
+              type: string
+              format: uri
+              example: 'https://advanced-eventmanagement.mindsphere.io/api/v3/eventTypes{?filter}'
+            templated:
+              type: boolean
+              example: true
+        deleteEventsJobs:
+          properties:
+            href:
+              type: string
+              format: uri
+              example: 'https://advanced-eventmanagement.mindsphere.io/api/v3/deleteEventsJobs'
+            templated:
+              type: boolean
+              example: true
+        createEventsJobs:
+          properties:
+            href:
+              type: string
+              format: uri
+              example: 'https://advanced-eventmanagement.mindsphere.io/api/v3/createEventsJobs'
+            templated:
+              type: boolean
+              example: true
+
+    BaseEventResponse:
+      type: object
+      required:
+        - id
+        - typeId
+        - correlationId
+        - timestamp
+        - entityId
+        - etag
+        - _links
+      properties:
+        id:
+          description: Unique identifier of the event
+          type: string
+          format: uuid
+        typeId:
+          description: Unique identifier of the event type (filterable, not updatable)
+          type: string
+        correlationId:
+          description: Correlation ID of the event. It can be used to group related events (filterable, not updatable)
+          type: string
+          format: uuid
+        timestamp:
+          description: Timestamp attached to the event in UTC format (filterable, not updatable)
+          type: string
+        entityId:
+          description: Entity attached to the event (filterable, not updatable)
+          type: string
+          format: uuid
+        etag:
+          type: integer
+          format: int64
+          description: Incremental counter for optimistic concurrency control
+        sharing:
+          $ref: '#/components/schemas/SharingResource'
+        _links:
+          type: object
+          properties:
+            self:
+              $ref: '#/components/schemas/rel.self'
+
+    BaseEvent:
+      type: object
+      required:
+        - timestamp
+        - entityId
+      properties:
+        typeId:
+          description: Unique identifier of the event type (filterable, not updatable)
+          type: string
+        correlationId:
+          description: Correlation ID of the event. It can be used to group related events (filterable, not updatable)
+          type: string
+          format: uuid
+        timestamp:
+          description: Timestamp attached to the event in UTC format (filterable, not updatable)
+          type: string
+        entityId:
+          description: Entity attached to the event (filterable, not updatable)
+          type: string
+          format: uuid
+
+    MindsphereStandardEvent:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            severity:
+              type: integer
+              minimum: 1
+              maximum: 99
+            description:
+              type: string
+              maxLength: 255
+            code:
+              type: string
+              maxLength: 16
+            source:
+              type: string
+              maxLength: 255
+            acknowledged:
+              type: boolean
+
+    MindsphereStandardEventResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseEventResponse'
+        - type: object
+          properties:
+            severity:
+              type: integer
+              minimum: 1
+              maximum: 99
+            description:
+              type: string
+              maxLength: 255
+            code:
+              type: string
+              maxLength: 16
+            source:
+              type: string
+              maxLength: 255
+            acknowledged:
+              type: boolean
+
+    CustomEvent:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          additionalProperties:
+            type: string
+            description: A custom field. An event can have multiple custom fields according to its event type. The field type can be string, integer, double, boolean, link, timestamp.
+
+    CustomEventResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseEventResponse'
+        - type: object
+          additionalProperties:
+            type: string
+            description: A custom field. An event can have multiple custom fields according to its event type. The field type can be string, integer, double, boolean, link, timestamp.
+
+    CustomEventUpdated:
+      allOf:
+        - $ref: '#/components/schemas/BaseEventResponse'
+        - type: object
+          additionalProperties:
+            type: string
+            description: A custom field. An event can have multiple custom fields according to its event type. The field type can be string, integer, double, boolean, link, timestamp.
+
+    CustomEventCreated:
+      allOf:
+        - $ref: '#/components/schemas/BaseEventResponse'
+        - type: object
+          additionalProperties:
+            type: string
+            description: A custom field. An event can have multiple custom field according to its type. It can be string, integer, double, boolean, link, timestamp.
+      example:
+        {
+          "id": "ae71ee1b-3454-4338-8def-a16028db08b0",
+          "typeId": "3cb8c2b1-f72e-43fa-ae39-ee9de14b8f26",
+          "correlationId": "3ecc3658-96bb-47ff-93b3-93afd640ee10",
+          "entityId": "50fd8ab5-23b3-45f7-aca1-12b0b186707b",
+          "timestamp": "2018-01-09T13:40:23.438Z",
+          "etag": 0,
+          "sharing": {
+            "modes": [
+            "SHARER"
+            ]
+          },
+          "_links": {
+            "self": {
+              "href": "string"
+            }
+          },
+          "customStringField": "customValue",
+          "customIntegerField": 10
+        }
+
+    EventType:
+      type: object
+      required:
+        - name
+        - fields
+      properties:
+        id:
+          description: ID of the created event type
+          type: string
+        name:
+          description: Name of the event type
+          type: string
+        parentId:
+          description: Parent event type ID
+          type: string
+        ttl:
+          description: Time to live in days
+          type: integer
+        scope:
+          description: Scope of the event type
+          type: string
+          enum: [LOCAL, GLOBAL]
+          default: LOCAL
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/Field'
+
+    EventTypeResponse:
+      type: object
+      required:
+        - id
+        - name
+        - parentId
+        - ttl
+        - etag
+        - owner
+        - scope
+        - fields
+        - _links
+      properties:
+        id:
+          description: ID of the created event type
+          type: string
+        name:
+          description: Name of the event type
+          type: string
+        parentId:
+          description: Parent event type ID
+          type: string
+        ttl:
+          description: Time to live in days
+          type: integer
+        etag:
+          type: integer
+          format: int64
+        owner:
+          description: The owner who created the event type
+          type: string
+        scope:
+          description: Scope of the event type
+          type: string
+          enum: [LOCAL, GLOBAL]
+          default: LOCAL
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/Field'
+        sharing:
+          $ref: '#/components/schemas/SharingResource'
+        _links:
+          type: object
+          properties:
+            self:
+              $ref: '#/components/schemas/rel.self'
+            events:
+              $ref: '#/components/schemas/rel.events'
+
+
+    EventTypePatch:
+      type: object
+      required:
+        - op
+        - path
+        - value
+      properties:
+        op:
+          description: Type of the operation to be made
+          enum: [add, replace]
+          type: string
+        path:
+          description: Identifying a specific attribute/field whereon the operation should be made
+          type: string
+        value:
+          description: New value for the given attribute or the field, that should be added, depending on the *op* value
+          type: string
+      example:
+        {
+          "op": "replace",
+          "path": "/fields/originalField/name",
+          "value": "newFieldName"
+        }
+    QueryEventTypesResponse:
+      type: object
+      properties:
+        _embedded:
+          type: object
+          properties:
+            eventTypes:
+              type: array
+              items:
+                $ref: '#/components/schemas/EventTypeResponse'
+        _links:
+          $ref: '#/components/schemas/PagingLinks'
+        page:
+          $ref: '#/components/schemas/Page'
+
+    QueryEventsResponse:
+      type: object
+      properties:
+        _embedded:
+          type: object
+          properties:
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/MindsphereStandardEventResponse'
+        _links:
+          $ref: '#/components/schemas/PagingLinks'
+        page:
+          $ref: '#/components/schemas/Page'
+
+    JobResource:
+      type: object
+      properties:
+        id:
+          description: Unique identifier of the job
+          type: string
+          format: uuid
+          readOnly: true
+        state:
+          description: State of the job
+          type: string
+          enum: [ACCEPTED, IN_PROGRESS, FINISHED, FINISHED_WITH_ERROR]
+          default: ACCEPTED
+
+    DeleteJobResource:
+      allOf:
+        - $ref: '#/components/schemas/JobResource'
+        - type: object
+          properties:
+            details:
+              $ref: '#/components/schemas/deleteJobDetails'
+      example:
+        {
+          "id": "3ecc3658-96bb-47ff-93b3-93afd640ee10",
+          "state": "FINISHED",
+          "details": {
+            "resultCode": "200",
+            "resultDescription": "3 events deleted"
+          }
+        }
+
+    CreateJobResource:
+      allOf:
+        - $ref: '#/components/schemas/JobResource'
+        - type: object
+          properties:
+            details:
+              $ref: '#/components/schemas/createJobDetails'
+      example:
+        {
+          "id": "uuid",
+          "state": "FINISHED_WITH_ERROR",
+          "details":{
+            "resultDescription":[
+            {
+              "event": {
+                "typeId": "3cb8c2b1-f72e-43fa-ae39-ee9de14b8f26",
+                "correlationId": "3ecc3658-96bb-47ff-93b3-93afd640ee10",
+                "timestamp": "2018-01-09T13:40:23.438Z",
+                "customStringField": "customValue",
+                "customIntegerField": 10
+              },
+              "resultCode": "400",
+              "errorMessage": "missing entity Id"},
+            {
+              "event": {
+                "id": "ae71ee1b-3454-4338-8def-a16028db08b0",
+                "typeId": "3cb8c2b1-f72e-43fa-ae39-ee9de14b8f26",
+                "correlationId": "3ecc3658-96bb-47ff-93b3-93afd640ee10",
+                "entityId": "50fd8ab5-23b3-45f7-aca1-12b0b186707b",
+                "timestamp": "2018-01-09T13:40:23.438Z",
+                "etag": 0,
+                "_links": {
+                  "self": {
+                    "href": "string"
+                  }
+                },
+                "customStringField": "customValue",
+                "customIntegerField": 10
+              },
+              "resultCode": "201"
+            }
+            ]
+          }
+        }
+
+    deleteEventsJob:
+      type: object
+      required:
+        - filter
+      properties:
+        filter:
+          description: |
+            - The `timestamp` property can be filtered by `before`, `after` and `between` functions.
+            - At least `typeId` property must be provided in filter expression.
+            - Multiple `typeId` expressions (by using and, or logical operators) in filter parameter is not allowed. Only equality function is supported on it.
+            - Negation of `typeId` in filter expression is not allowed.
+          type: object
+          format: json
+
+    createEventsJob:
+      type: object
+      required:
+        - events
+      properties:
+        events:
+          description: |
+            - List of events to create
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomEvent'
+
+    deleteJobDetails:
+      description: Details about the job in case of FINISHED and FINISHED_WITH_ERROR
+      type: object
+      properties:
+        resultCode:
+          description: status code describes the job's execution result
+          type: string
+        resultDescription:
+          description: |
+            information about
+            - how many events deleted or
+            - what error happened
+          type: string
+
+    createJobDetails:
+      description: Details about the job in case of FINISHED and FINISHED_WITH_ERROR
+      type: object
+      properties:
+        resultDescription:
+          type: array
+          items:
+            $ref: '#/components/schemas/createEventDetailedDescription'
+
+    createEventDetailedDescription:
+      description: Details about an event within a bulk create job
+      type: object
+      properties:
+        event:
+          description: created event resource or the input event in case of failure
+          type: string
+          format: json
+        resultCode:
+          description: status code of event creation
+          type: string
+        errorMessage:
+          description: details about failing event creation
+          type: string
+
+    Field:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        filterable:
+          type: boolean
+          default: false
+        required:
+          type: boolean
+          default: false
+        updatable:
+          type: boolean
+          default: false
+        type:
+          type: string
+          enum: [STRING, INTEGER, DOUBLE, BOOLEAN, LINK, TIMESTAMP, UUID, ENUM]
+          description: Note that the LINK type is not a plain HREF. The value for the LINK type should be given between quotation marks.
+        values:
+          type: array
+          items:
+            type: string
+          description: This field is applicable only if the field's type is ENUM, otherwise it should be skipped. The values must be strings.
+
+    Errors:
+      type: array
+      items:
+        type: object
+        properties:
+          logref:
+            type: string
+            format: uuid
+          message:
+            type: string
+        example:
+          logref: c27a28b6eb16b507fabc11e75da8b4ce
+          message: Some meaningful message about the problems origin
+
+    ApiRateErrors:
+      type: array
+      items:
+        type: object
+        properties:
+          message:
+            type: string
+        example:
+          message: API rate limit exceeded
+
+    Page:
+      type: object
+      properties:
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+        number:
+          type: integer
+
+    PagingLinks:
+      type: object
+      properties:
+        first:
+          $ref: '#/components/schemas/rel.first'
+        self:
+          type: object
+          title: Self link
+          properties:
+            href:
+              type: string
+              format: uri
+            templated:
+              type: boolean
+              example: true
+        next:
+          $ref: '#/components/schemas/rel.next'
+        prev:
+          $ref: '#/components/schemas/rel.prev'
+        last:
+          $ref: '#/components/schemas/rel.last'
+
+    SharingResource:
+      type: object
+      description: >-
+        Contains sharing information.
+        This sharing information will be available only if 'includeShared' query parameter is 'true' in request.
+      properties:
+        modes:
+          type: array
+          description: >-
+            List of sharing modes applicable for this resource. The currently supported modes are SHARER, RECEIVER and DEFAULT.
+            SHARER means this resource is shared by my tenant.
+            RECEIVER means this resource is shared with my tenant.
+            DEFAULT means this resource is provide by default.
+            An empty array means this resource is not shared.
+            New modes might be introduced later and clients must expect additional items to be contained in the array.
+          items:
+            type: string
+            enum: [ SHARER, RECEIVER, DEFAULT ]
+
+
+    rel.self:
+      type: object
+      title: Self link
+      properties:
+        href:
+          type: string
+          format: uri
+    rel.first:
+      type: object
+      title: Link to first page
+      properties:
+        href:
+          type: string
+          format: uri
+    rel.next:
+      type: object
+      title: Link to next page
+      properties:
+        href:
+          type: string
+          format: uri
+    rel.prev:
+      type: object
+      title: Link to the previous page
+      properties:
+        href:
+          type: string
+          format: uri
+    rel.last:
+      type: object
+      title: Link to last page
+      properties:
+        href:
+          type: string
+          format: uri
+    rel.events:
+      type: object
+      title: Link to events belonging to this event type
+      properties:
+        href:
+          type: string
+          format: uri
+
+  parameters:
+    size:
+      name: size
+      in: query
+      description: |
+        Specifies the number of elements in a page. Default is 20, minimum is 1 , **maximum is 500**.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 500
+        default: 20
+    sizeET:
+      name: size
+      in: query
+      description: |
+        Specifies the number of elements in a page. Default is 20, minimum is 1 , **maximum is 100**.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+    page:
+      name: page
+      in: query
+      description: |
+        Specifies the requested page index. Default is 0
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    eventFilter:
+      name: filter
+      in: query
+      description: |
+        description: |
+        Filter parameter (JSON) encoded format. Events can be filtered by the following fields
+          - `timestamp`
+          - `typeId`
+          - `correlationId`
+          - `entityId`
+          - `code`
+          - `severity`
+          - `source`
+          - `acknowledged`
+          - `assetTypeId`
+          - `parentAssetId`
+          - Other custom filters, based on filterable field in custom EventType can also be used.
+
+          Following conditions apply for filtering events,
+          - If `timestamp` is not provided in the filter, the events from the 7 days will be filtered for by default.
+          - The `timestamp` property can be filtered by `before`, `after` and `between` functions.
+          - Multiple `typeId` expressions (by using and, or logical operators) in filter parameter is not allowed. Only equality function is supported on it.
+          - Filtering with typeId having `BaseEvent` is not supported. If typeId is missing from filter expression then `MindsphereStandardEvent` typed (including) descendants - polymorphic query) events will be returned.
+          - Negation of `typeId` in filter expression is not allowed.
+          - If there are multiple events that have the same `correlationId`, `entityId` and `typeId` then only the latest one will be present in the returning list of events if `history` is false (false is default value).
+          - Negation of `assetTypeId` in filter expression is not allowed.
+          - Only equality and IN function (with max 5 values) in filter are allowed with `assetTypeId`.
+          - Negation of 'parentAssetId' in filter expression is not allowed.
+          - Only equality function in filter is allowed with `parentAssetId`.
+      schema:
+        type: string
+        format: json
+    eventTypeFilter:
+      name: filter
+      in: query
+      description: |
+        Filter parameter (JSON) encoded format. Event types can be filtered by the following fields
+        - `id`
+        - `name`
+        - `owner`
+        - `scope`
+      schema:
+        type: string
+        format: json
+    eventSort:
+      name: sort
+      in: query
+      description: |
+        Order in which events are returned. Supported only on filterable fields. Default is `timestamp` descending order
+      schema:
+        type: string
+        format: json
+    eventTypeSort:
+      name: sort
+      in: query
+      description: |
+        Order in which event types are returned. Supported only on filterable fields. Default is `name` ascending order
+      schema:
+        type: string
+        format: json
+    eventHistory:
+      name: history
+      in: query
+      description: |
+        Optional paramater, if we want to retrieve the history of an event which is based on using the same correlationID, entityID, typeID.
+        If the latest event instance in a history of an event is deleted then the history of the event will be deleted.
+      schema:
+        type: boolean
+        default: false
+    eventId:
+      name: eventId
+      in: path
+      description: ID of an event
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ifMatch:
+      name: If-Match
+      in: header
+      description: Used for optimistic concurrency control
+      required: true
+      schema:
+        type: integer
+        format: int32
+    ifNoneMatch:
+      name: If-None-Match
+      in: header
+      description: ETag hash of previous request to allow caching
+      schema:
+        type: string
+    eventTypeId:
+      name: eventTypeId
+      in: path
+      description: ID of an event type
+      required: true
+      schema:
+        type: string
+    jobId:
+      name: jobId
+      in: path
+      description: ID of a job
+      required: true
+      schema:
+        type: string
+        format: uuid
+    includeShared:
+      name: includeShared
+      in: query
+      description: >-
+        To specify if received event or eventTypes should be consider for the API operation.
+      schema:
+        type: boolean
+        default: false
+    enablePageCache:
+      name: enablePageCache
+      in: query
+      description: >-
+        To specify if page caching is enabled or not. This property enables faster fetching of events from multiple pages for same filter criteria.
+      schema:
+        type: boolean
+        default: false
+    excludeGlobal:
+      name: excludeGlobal
+      in: query
+      description: >-
+        If set to true, the response will include all the event types created only by the tenant along with the Mindsphere's core event types.
+      schema:
+        type: boolean
+        default: false
+
+  responses:
+    304StandardResponse:
+      description: Not Modified
+    403ErrorForbiddenResponse:
+      description: |
+        The user does not have the right permission
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseCreateEvent:
+      description: |
+        The request will return 400 BAD REQUEST in cases you can find below.
+        - severity is not between the 1-99 number range
+        - code is longer than 16 characters
+        - source is longer than 255 characters
+        - description is longer than 255 characters
+        - entityId is not given in the request
+        - timestamp is not given in the request body
+        - timestamp is not a valid UTC timestamp
+        - timestamp plus the TTL (defined by the event's type) is less than the current timestamp
+        - correlationId is longer than 36 characters
+        - provided entityId is shared and owned by other tenant
+
+        Custom Events
+        - creating event having base event type
+        - required field is missing
+        - incompatible value to a custom field
+        - UUID typed field receiving invalid value
+        - provided typeId is shared eventType with Local Scope owned by other tenant
+        - string length should not be greater than 255
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseBulkDeleteEvent:
+      description: |
+        The request will return 400 BAD REQUEST if filter is not valid JSON or there is no 'typeId' in the filter expression
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseBulkCreateEvent:
+      description: |
+        The request will return 400 BAD REQUEST if there are more than 150 events in the payload
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseCreateEvent:
+      description: |
+        The request will return 404 NOT FOUND in cases you can find below.
+        - The given event type does not exist
+        - The given entity Id does not exist
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseGetEventById:
+      description: |
+        The request will return 404 NOT FOUND in cases you can find below.
+        - There is no event stored in the database with the given event ID
+        - The given entity Id does not exist
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseGetJobById:
+      description: Not Found
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseGetEvent:
+      description: |
+        The request will return 400 BAD REQUEST in cases you can find below.
+        - Not filterable field is present in the filter expression
+        - Sorting events by a not sortable field
+        - BaseEvent type is present in the filter expression's typeId parameter
+        - `size` parameter is larger than 500
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseUpdateEvent:
+      description: |
+        The request will return 400 BAD REQUEST in cases you can find below.
+        - Updating a field with invalid value
+        - Updating fields that are not updatable (typeId, correlationId, timestamp, entityId, etc.)
+        - Updating without required field in input
+        - Updating without typeId
+        - Updating a required field to null
+        - Updating a custom field with incompatible type
+        - Updating shared event owned by another tenant
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseUpdateEvent:
+      description: |
+        The request will return 404 BAD REQUEST in cases you can find below.
+        - Updating non-existing event
+        - The given entity Id does not exist
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseCreateEventType:
+      description: |
+        The request will return 400 BAD REQUEST in cases you can find below.
+        - reserved words of MySQL and Java cannot be used as event type or field name
+        - provided id is not compliant with the following format: <tenant>.<idFragment1>[.<idFragment2>..]
+        - provided id is longer than 64 characters
+        - provided id contains special characters (only alphanumeric characters allowed)
+        - name of the event type is missing
+        - ttl is bigger than 1825
+        - type of a field is missing
+        - name of the event type should not be from following reserved names: AgentBaseEvent, DataSourceEvent
+        - name of the event type longer than 64 characters
+        - field name is duplicated
+        - field name is longer than 64 characters
+        - number of fields are more than 100
+        - inheritance depth exceeds 4
+        - definition of field property is missing
+        - filterable fields are more than 10
+        - field of `LINK` type is filterable
+        - want to create event type with GLOBAL scope which has parent event type with LOCAL scope
+        - `values` definition
+          - is missing or empty in case of ENUM field type, or it is present in case of any other type than ENUM.
+          - holds other types than string
+          - contains duplicated members
+          - contains enum members longer than 36 characters
+        - provided parentId is shared eventType with LOCAL scope and owned by other tenant
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseUpdateEventType:
+      description: |
+        The request will return 400 BAD REQUEST in cases you violate any of the below circumstances.
+        - The event type can be updated only by the owner.
+        - More than 300.000 events exist based on the event type that the user wants to update.
+        - Changing event type scope from `GLOBAL` to `LOCAL` is only possible when there are no events created
+          from the event type which belongs to another tenant than the event type was created from.
+        - The additional fields cannot be required.
+        - A required field can be turned into an optional field by an update but the opposite operation is not allowed.
+        - The type of a custom field cannot be changed.
+        - The filterable property of a custom field can be changed to 'true' but the opposite operation is not allowed.
+        - The owner of the event type cannot be changed.
+        - The parent of the event type cannot be changed.
+        - An event type can only be modified if there are no child event types derived from; except for the operation of ttl update.
+        - `BaseEvent` and `MindSphereStandardEvent` cannot be updated.
+        - Receiver tenant can not modify shared eventType owned by other tenant.
+        - `values` definition
+                - is missing or empty in case of ENUM field type, or it is present in case of any other type than ENUM.
+                - holds other types than string
+                - contains duplicated members
+                - contains enum members longer than 36 characters
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseDeleteEventType:
+      description: |
+        The request will return 400 BAD REQUEST in cases you violate any of the below circumstances.
+        - BaseEvent and StandardEvent cannot be deleted.
+        - The event type can be deleted only by the owner.
+        - Only event types can be deleted which does not have child event types.
+        - Only event types without any corresponding events can be deleted.
+        - Receiver tenant can not delete shared eventType owned by other tenant.
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseUpdateEventType:
+      description: |
+        The request will return 404 BAD REQUEST in cases you can find below.
+        - Updating non-existing eventtype
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseGetEventTypeById:
+      description: |
+        The request will return 404 BAD REQUEST in cases you can find below.
+        - There is no event type stored in the database with the given event type ID
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404ErrorResponseDeleteEventTypeById:
+      description: |
+        The request will return 404 BAD REQUEST in cases you can find below.
+        - There is no event type stored in the database with the given event type ID
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    400ErrorResponseGetEventType:
+      description: |
+        The request will return 400 BAD REQUEST in cases you can find below.
+        - Filter event types by a not filterable field
+        - Sorting event types by a not sortable field
+        - `size` parameter is larger than 100
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    401StandardErrorResponse:
+      description: Unauthorized
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    404StandardErrorResponse:
+      description: Not Found
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    409StandardErrorResponse:
+      description: Conflict
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    409ErrorResponseUpdateEventType:
+      description: |
+        The request will return 409 CONFLICT in cases you can find below.
+        - Concurrent modification of the same event type
+        - Concurrent event deletion on the same event type
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    409ErrorResponseDeleteEventType:
+      description: |
+        The request will return 409 CONFLICT in cases you can find below.
+        - Event type is changed by another user, and etag is different then provided in the `If-Match` header
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    409ErrorResponseCreateEventType:
+      description: |
+        The request will return 409 CONFLICT in cases you can find below.
+        - An event type already exists with the given id
+        - An event type already exists with the given name for the tenant
+        - Field already exists in one of the parent event types
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    412StandardErrorResponse:
+      description: Precondition Failed
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+    429StandardErrorResponse:
+      description: Too Many Requests
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/ApiRateErrors'
+    500StandardErrorResponse:
+      description: Internal Server Error
+      content:
+        application/vnd.error+json:
+          schema:
+            $ref: '#/components/schemas/Errors'
+
+  securitySchemes:
+    event:
+      type: oauth2
+      description: |
+        For **Xcelerator** compliance, please use **authorizationUrl** = https://1000001700.eu1.sws.siemens.com/oauth/authorize and **tokenUrl** = https://1000001700.eu1.sws.siemens.com/oauth/token
+
+        For **IH** compliance, please use **authorizationUrl** = https://core.piam.eu1.mindsphere.io/oauth/authorize and **tokenUrl** = https://core.piam.eu1.mindsphere.io/oauth/token
+      flows:
+        authorizationCode:
+          authorizationUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/authorize'
+          tokenUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/token'
+          scopes:
+            em.c: create event
+            em.r: read event
+            em.u: update event
+            em.d: delete event
+    eventType:
+      type: oauth2
+      description: |
+        For **Xcelerator** compliance, please use **authorizationUrl** = https://1000001700.eu1.sws.siemens.com/oauth/authorize and **tokenUrl** = https://1000001700.eu1.sws.siemens.com/oauth/token
+
+        For **IH** compliance, please use **authorizationUrl** = https://core.piam.eu1.mindsphere.io/oauth/authorize and **tokenUrl** = https://core.piam.eu1.mindsphere.io/oauth/token
+      flows:
+        authorizationCode:
+          authorizationUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/authorize'
+          tokenUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/token'
+          scopes:
+            em.et.c: create event type
+            em.et.r: read event type
+            em.et.u: update event type
+            em.et.d: delete event type
+    job:
+      type: oauth2
+      description: |
+        For **Xcelerator** compliance, please use **authorizationUrl** = https://1000001700.eu1.sws.siemens.com/oauth/authorize and **tokenUrl** = https://1000001700.eu1.sws.siemens.com/oauth/token
+
+        For **IH** compliance, please use **authorizationUrl** = https://core.piam.eu1.mindsphere.io/oauth/authorize and **tokenUrl** = https://core.piam.eu1.mindsphere.io/oauth/token
+      flows:
+        authorizationCode:
+          authorizationUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/authorize'
+          tokenUrl: 'https://1000001700.eu1.sws.siemens.com/oauth/token'
+          scopes:
+            em.dej.c: create delete events job
+            em.dej.r: read delete events job
+            em.cej.c: create create events job
+            em.cej.r: read create events job

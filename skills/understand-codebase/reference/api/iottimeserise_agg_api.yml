@@ -1,0 +1,567 @@
+swagger: '2.0'
+
+info:
+  title: IoT TS Aggregates API
+  description: |
+
+    The aggregate service enables querying aggregated time series data for performance assets based on pre-calculated aggregate values.
+
+    Precalculated aggregates are available in the following aggregate intervals
+    * 1 minute
+    * 1 hour
+    * 1 day
+
+    ## Generic Errors
+    The following generic error codes (with status codes) can occur at the operations of this API. Generic error codes are prefixed with 'mdsp.core.generic.'.
+
+    - unauthorized (401)
+    - forbidden (403)
+    - tooManyRequests (429)
+    - internalServerError (500)
+
+  version: "4.3.0"
+  x-visibility: "external"
+
+schemes:
+  - https
+
+basePath: /api/iottsaggregates/v4
+
+produces:
+  - application/json
+
+securityDefinitions:
+  aggregates:
+    type: oauth2
+    flow: accessCode
+    authorizationUrl: 'https://oauth.simple.api/authorization'
+    tokenUrl: 'https://oauth.simple.api/token'
+    scopes:
+      iot.tsa.r: read aggregated time series
+
+paths:
+
+  /aggregates:
+    get:
+      summary: Get aggregated time series data for one aspect of an asset.
+      tags:
+        - aggregates
+      description: |
+        Returns a list of aggregates for a given asset and aspect. The time range of the aggregates can be defined by a combination of parameters; such as from, to, intervalUnit, intervalValue and count. Time range can be specified anywhere in past or future for which timeseries data is present. In the case no time series data was available for an aggregation interval, no aggregate will be returned. Pre-computed aggregates are aligned with the tenant's time zone.
+
+        **Limitations**
+        - The maximum time range for querying DAY/WEEK/MONTH aggregates is 365 days.
+        - The maximum time range for querying HOUR aggregates is 30 days.
+        - The maximum time range for querying MINUTE aggregates is 48 hours.
+
+        **Parameter Auto-Completion**
+        The parameters *from*, *to*, *intervalUnit*, *intervalValue*, and *count* are used to determine the time range and interval length to return aggregates for. Intelligent auto-completion is applied to allow clients to only provide a subset of the parameters, according to the following rules:
+        1. In case none of the parameters is provided, *intervalUnit* is set to DAY, *intervalValue* is set to 1, *to* is set to the current time, and *from* is set to the current time minus 7 days.
+        1. If only *from* is provided, *to* is set such that a 90 day time range results or, in case a larger range would result, to the current time. *from* is truncated to date-only for this calculation.
+        1. If only *to* is provided, *from* is set such that a 90 day time range results.
+        1. If *intervalUnit*, *intervalValue* and *count* are provided, it suffices to either provide *to* or *from* in addition. The missing parameter is determined based on the time range computed from *intervalUnit*, *intervlValue* and *count*.
+        1. If *intervalUnit* and *intervalValue* are not provided, the largest available interval length fitting into the used time range is chosen.
+        1. If *count* is not provided, but the other parameters are, *count* will be derived based on the time range divided by the *intervalUnit* and *intervalValue*.
+        1. In case parameters *from* or *to* are provided but do not coincide with the pre-calculated interval boundaries of the used interval, *from* and *to* are shifted such that the overall time range contains the provided one and time range boundaries coincide with interval boundaries.
+        1. If *from*, *to* and *count* are provided, *intervalUnit*, *intervalValue* is determined based on the time range divided by count.
+
+        **Examples**
+
+        *Example 1: use of intervalUnit, intervalValue and count to derive end of time range.*
+
+            A request with open time range is made
+
+              from = 2019-02-01Z
+              intervalUnit = day
+              intervalValue = 1
+              count = 7
+
+            Rule 4 is applied to determine the 'to' parameter
+
+              to = 2019-02-08Z
+
+        *Example 2: time range auto-extension and count derivation.*
+
+            A request with missing 'to' and 'count' parameters is made, and current system time is 2019-02-01T20:00:00Z
+
+              from = 2019-02-01T10:00:00Z
+              intervalUnit = hour
+              intervalValue = 1
+
+            The 'to' time is derived based on Rule 2 to be the current time and 'count' is determined applying Rule 6
+
+              to = 2019-02-01T20:00:00Z
+              count = 10
+
+
+        *Example 3: intervalUnit and intervalValue auto-completion.*
+
+            A request without 'intervalUnit', 'intervalValue' and 'count' is made
+
+              from = 2020-10-10T10:00:00Z
+              to = 2020-10-10T10:30:00Z
+
+            Rule 5 is applied to determine the interval length based on the time range only. The count is derived based on rule 6 in the following.
+
+              intervalUnit = minute
+              intervalValue = 2
+              count = 15
+
+        *Example 4: intervalUnit and intervalValue auto-completion with larger interval*
+
+            Similar as Example 3, a request without 'intervalUnit', 'intervalValue' and 'count' is made
+
+              from = 2020-10-10T10:00:00Z
+              to = 2020-10-10T12:00:00Z
+
+            Rules 5 and 6 are applied, but since the time range is multiple hours long, the interval is determined to be HOUR
+
+              intervalUnit = hour
+              intervalValue = 1
+              count = 2
+
+        *Example 5: intervalUnit and intervalValue auto-completion with much larger interval*
+
+            Similar as Example 3 and 4, a request without 'intervalUnit', 'intervalValue' and 'count' is made
+
+              from = 2020-10-10T00:00:00Z
+             to = 2020-10-15T00:00:00Z
+
+            Rules 5 and 6 are applied, but since the time range is multiple days long, the interval is determined to be DAY
+
+              intervalUnit = day
+              intervalValue = 1
+              count = 5
+
+        *Example 6: intervalUnit and intervalValue auto-completion when count is also provided.*
+
+            A request without 'intervalUnit' and 'intervalValue' is made
+
+              from = 2020-10-10T10:00:00Z
+              to = 2020-10-10T10:30:00Z
+              count = 3
+
+            Since the difference between from and to date is 30 minute, and count asked is 3. Rule 8 is applied and 3 aggregate buckets of 10 minute is returned
+
+              intervalUnit = minute
+              intervalValue = 10
+
+        *Example 7: to and from date adjusted to pre-computed aggregate boundary*
+
+            Following request is made
+
+             from = 2020-10-10T02:10:00Z
+             to = 2020-10-10T09:10:00Z
+             intervalUnit = hour
+             intervalValue = 1
+
+            Rule 7 is applied since aggregate is queried for 1 hour and dates are not aligned to Hour boundary, *from* and *to* dates are adjusted to Hour boundary
+
+            from = 2020-10-10T02:00:00Z
+            to = 2020-10-10T10:00:00Z
+
+        *Example 8: to, from, intervalUnit and intervalValue asking for 4 hour aggregate*
+
+            Following request is made
+
+             from = 2020-10-10T00:00:00Z
+             to = 2020-10-11T00:00:00Z
+             intervalUnit = hour
+             intervalValue = 4
+
+            Since pre-computed aggregate exists for every HOUR, Hourly aggregates will be combined and a response bucket every 4 hours will be returned
+
+      operationId: retrieveAggregates
+      security:
+        - aggregates:
+            - iot.tsa.r
+      parameters:
+        - name: assetId
+          in: query
+          description: Unique identifier of the asset.
+          required: true
+          type: string
+          minLength: 32
+          maxLength: 32
+          pattern: "[a-f0-9]{32}"
+        - name: aspectName
+          in: query
+          description: Name of the aspect.
+          required: true
+          type: string
+        - name: from
+          in: query
+          description: Beginning of the time range to read. ISO date format is supported with timezone. If no timezone is provided then it is considered as UTC aligned date-time. Example date time values are
+            <table>
+              <tr>
+                <td>Date-time with no timezone provided</td>
+                <td>
+                  2020-02-20Z<br/>
+                  2020-02-20T10Z<br/>
+                  2020-02-20T10:30Z<br/>
+                  2020-02-20T10:30:00Z<br/>
+                  2020-02-20T10:30:00.000Z
+                </td>
+              </tr>
+              <tr>
+                <td>Date-time with timezone provided</td>
+                <td>
+                  2020-02-20-05:00<br/>
+                  2020-02-20T10-05:00<br/>
+                  2020-02-20T10:30-05:00<br/>
+                  2020-02-20T10:30:00-05:00<br/>
+                  2020-02-20T10:30:00.000-05:00
+                </td>
+              </tr>
+            </table>
+          required: false
+          type: string
+        - name: to
+          in: query
+          description: End of the time range to read. ISO date format is supported with timezone. If no timezone is provided then it is considered as UTC aligned date-time. Example date time values are
+            <table>
+              <tr>
+                <td>Date-time with no timezone provided</td>
+                <td>
+                  2020-02-20Z<br/>
+                  2020-02-20T10Z<br/>
+                  2020-02-20T10:30Z<br/>
+                  2020-02-20T10:30:00Z<br/>
+                  2020-02-20T10:30:00.000Z
+                </td>
+              </tr>
+              <tr>
+                <td>Date-time with timezone provided</td>
+                <td>
+                  2020-02-20-05:00<br/>
+                  2020-02-20T10-05:00<br/>
+                  2020-02-20T10:30-05:00<br/>
+                  2020-02-20T10:30:00-05:00<br/>
+                  2020-02-20T10:30:00.000-05:00
+                </td>
+              </tr>
+            </table>
+          required: false
+          type: string
+        - name: intervalValue
+          in: query
+          description:
+            Interval duration for the aggregates in intervalUnits. Supported values depends upon intervalUnit <br/>
+            <table>
+            <tr><td><b>intervalUnit</b></td><td><b>Supported intervalValue</b></td></tr>
+            <tr><td>minute</td><td>1,2,3,4...59,60</td></tr>
+            <tr><td>hour</td><td>1,2,3,4,...23,24</td></tr>
+            <tr><td>day</td><td>1,2,3,4,...89,90</td></tr>
+            <tr><td>week</td><td>1,2,3,4,...11,12</td></tr>
+            <tr><td>month</td><td>1,2,3</td></tr>
+            </table>
+          required: false
+          type: number
+          format: long
+        - name: intervalUnit
+          in: query
+          description:
+            Interval duration unit for the aggregates. Supported values are
+            <ul>
+            <li>minute</li>
+            <li>hour</li>
+            <li>day</li>
+            <li>week</li>
+            <li>month</li>
+            </ul>
+          required: false
+          type: string
+        - name: select
+          in: query
+          description: If this parameter is not provided all variables of aspect are returned in response. User can provide comma separated variables names in order to filter out variables. Variable names followed by '.' and aggregate field will return specific fields of aggregate object.<br/>
+            Example 1-
+            select=variable1,variable2
+            If above parameter provided in request, agregate response will only contain variable1 and variable2.
+            <br/>
+            Example 2-
+            select=variable1.sum,variable2.sum
+            If above parameter provided in request, agregate response will only contain variable1 and variable2 with only sum in aggregate response object.
+
+          required: false
+          type: string
+        - name: count
+          in: query
+          description: This parameter is used to get number of aggregate objects in response.
+          required: false
+          type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Aggregates'
+
+        "400":
+          description: |
+            Bad Request. Possible errors:
+            <br>
+            <table>
+              <colgroup>
+                <col span="1" style="width: 30%;">
+                <col span="1" style="width: 70%;">
+              </colgroup>
+              <tr>
+                <th align="left">Code Suffix</th>
+                <th align="left">Message (parametrized)</th>
+              </tr>
+              <tr>
+                <td>mdsp.core.iottsaggregates.tenantNotFound</td>
+                <td>Tenant with identityId {0} not found.</td>
+              </tr>
+              <tr>
+                <td>mdsp.core.iottsaggregates.assetNotFound</td>
+                <td>Asset with id {0} not found.</td>
+              </tr>
+              <tr>
+                <td>mdsp.core.iottsaggregates.assetTypeNotFound</td>
+                <td>Asset type {0} not found.</td>
+              </tr>
+              <tr>
+                <td>mdsp.core.iottsaggregates.aspectNotFound</td>
+                <td>Aspect with name {0} not found.</td>
+              </tr>
+              <tr>
+                <td>mdsp.core.iottsaggregates.invalidInput</td>
+                <td>Invalid value '{1}' for request param - {0}</td>
+              </tr>
+            </table>
+          schema:
+            $ref: '#/definitions/Errors'
+
+        "404":
+          description: |
+            Not found. Possible errors:
+            <br>
+            <table>
+              <colgroup>
+                <col span="1" style="width: 30%;">
+                <col span="1" style="width: 70%;">
+              </colgroup>
+              <tr>
+                <th align="left">Code Suffix</th>
+                <th align="left">Message (parametrized)</th>
+              </tr>
+              <tr>
+                <td>assetNotFound</td>
+                <td>Asset with given ID not found.</td>
+              </tr>
+              <tr>
+                <td>aspectNotFound</td>
+                <td>Aspect with given ID not found.</td>
+              </tr>
+            </table>
+          schema:
+            $ref: '#/definitions/Errors'
+
+        "503":
+          description: |
+            Service Unavailable.
+          schema:
+            $ref: '#/definitions/Errors'
+
+        "403":
+          description: |
+            Forbidden. Possible errors:
+            <br>
+            <table>
+              <colgroup>
+                <col span="1" style="width: 30%;">
+                <col span="1" style="width: 70%;">
+              </colgroup>
+              <tr>
+                <th align="left">Code Suffix</th>
+                <th align="left">Message (parametrized)</th>
+              </tr>
+              <tr>
+                <td>forbidden</td>
+                <td>User is not having required access to perform this operation on given Asset {assetId}. Consult tenant admin for appropriate access.</td>
+              </tr>
+            </table>
+          schema:
+            $ref: '#/definitions/Errors'
+
+        "429":
+          description: |
+                Too many requests that can be arised based on subsequent case:
+                - User has sent too many requests in a given amount of time.
+
+                A Retry-After header might be included to this response indicating how long in 'seconds' to wait before making a new request.
+          headers:
+            Retry-After:
+              type: integer
+              description: Time in seconds to wait before making a new request
+          schema:
+            $ref: '#/definitions/TooManyRequests'
+
+        default:
+          description: Other error with any status code and response body format
+
+definitions:
+
+  Aggregates:
+    type: object
+    properties:
+      aggregates:
+        type: array
+        maxItems: 200
+        items:
+          type: object
+          properties:
+            starttime:
+              type: string
+              format: date-time
+              description: start time of the interval (exclusive)
+            endtime:
+              type: string
+              format: date-time
+              description: end time of the interval (inclusive)
+            property1:
+              $ref: '#/definitions/Variable'
+            property2:
+              $ref: '#/definitions/Variable'
+    example :
+      aggregates:
+        - starttime: "2017-05-01T00:10:00Z"
+          endtime: "2017-05-01T00:12:00Z"
+          pressure :
+            countgood: 4
+            countuncertain: 0
+            countbad: 0
+            sum: 178
+            average: 93.75
+            mintime: "2017-05-01T00:10:00Z"
+            minvalue: 93
+            maxtime: "2017-05-01T00:12:00Z"
+            maxvalue: 95
+            firsttime: "2017-05-01T00:10:14Z"
+            firstvalue: 93
+            lasttime: "2017-05-01T00:11:58Z"
+            lastvalue: 94
+            sd: 14.36
+          temperature:
+            countgood: 6
+            countuncertain: 0
+            countbad: 1
+            sum: 445
+            average: 88.6
+            mintime: "2017-05-01T00:10:00Z"
+            minvalue: 72.2
+            maxtime: "2017-05-01T00:12:00Z"
+            maxvalue: 121.6
+            firsttime: "2017-05-01T00:10:25Z"
+            firstvalue: 81
+            lasttime: "2017-05-01T00:12:00Z"
+            lastvalue: 101
+            sd: 31.2
+
+  Variable:
+    type: object
+    properties:
+      countgood:
+        type: integer
+        description: Number of good records in the aggregated interval.
+
+      countuncertain:
+        type: integer
+        description: Number of uncertain records in the aggregated interval.
+
+      countbad:
+        type: integer
+        description: Number of bad records in the aggregated interval.
+
+      sum:
+        type: number
+        format: double
+        description: Sum of the values within the interval.
+
+      average:
+        type: number
+        format: double
+        description: Average of the values within the interval.
+
+      mintime:
+        type: string
+        format: date-time
+        description: Timestamp of the minimum value within the interval.
+
+      minvalue:
+        type: number
+        format: double
+        description: Minimum value within the interval.
+
+      maxtime:
+        type: string
+        format: date-time
+        description: Timestamp of the maximum value within the interval.
+
+      maxvalue:
+        type: number
+        format: double
+        description: Maximum value within the interval.
+
+      firsttime:
+        type: string
+        format: date-time
+        description: Timestamp of the first value within the interval.
+
+      firstvalue:
+        type: number
+        format: double
+        description: First value within the interval.
+
+      lasttime:
+        type: string
+        format: date-time
+        description: Timestamp of the last measurement within the interval.
+
+      lastvalue:
+        type: number
+        format: double
+        description: Last value within the interval.
+
+      sd:
+        type: number
+        format: double
+        description: Standard deviation of the values within the interval. It will return null, if number goes beyond Double range during calculation of Standard Deviation.
+
+  Errors:
+    type: object
+    properties:
+      errors:
+        type: array
+        items:
+          type: object
+          properties:
+            code:
+              type: string
+              example: mdsp.core.generic.<code suffix>
+            logref:
+              type: string
+              format: uuid
+              example: d665bb74-57f0-11ea-82b4-0242ac130003
+            message:
+              type: string
+              example: Error code specific messages. See description of error response.
+            messageParameters:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: exampleParameterName
+                  value:
+                    type: string
+                    example: 100
+
+  TooManyRequests:
+    type: object
+    properties:
+      message:
+        type: string
+    example:
+      message: "API rate limit exceeded"
