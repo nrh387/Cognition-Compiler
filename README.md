@@ -1,5 +1,7 @@
 # Cognition-Compiler
 
+![Cognition-Compiler overview](./one_pager.png)
+
 `Cognition-Compiler` is a repository of reusable skills for GitHub Copilot style agent workflows.
 
 The current repository focuses on three capabilities:
